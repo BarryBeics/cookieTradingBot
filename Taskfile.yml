@@ -1,0 +1,76 @@
+version: "3"
+
+env:
+  ENV: dev
+
+dotenv: [".env.{{.ENV}}", ".env"]
+
+vars:
+  VERSION:
+    sh: cat ./VERSION | tr -d '\n'
+  TEST_DATE:
+    sh: date '+%Y-%m-%d-%H-%M'
+
+tasks:
+
+  generate:
+    desc: Generate GQL client
+    cmds:
+      - go generate ./...
+    sources:
+      - graph/schema.graphql
+      - graph/genqlient.graphql
+      - go.mod
+      - go.sum
+    generates:
+      - graph/generated_gen.go
+
+  build:
+    desc: Build the Go Code
+    cmds:
+      - go generate ./...
+      - go test ./tests/...    # Run tests
+      - go build -o tradingBot main.go
+    env:
+      CGO_ENABLED: 0
+    sources:
+      - ./**/*.go
+    generates:
+      - ./tradingBot
+
+  test:
+    desc: "Run tests"
+    cmds:
+      - go test ./tests/...
+
+  bump_patch:
+    desc: Bump patch version number
+    cmds:
+      - git branch --show-current | grep ^releases || { echo "Use releases branch to bump versions"; exit 1; }
+      - awk -F. '{$NF = $NF + 1; OFS = "."; print}' VERSION > VERSION.tmp && mv VERSION.tmp VERSION
+      - git add VERSION
+      - git commit -m "Prepare patch v{{.VERSION}} for release"
+
+  bump_minor:
+    desc: Bump minor version number
+    cmds:
+      - git branch --show-current | grep ^releases || { echo "Use releases branch to bump versions"; exit 1; }
+      - awk -F. '{$2 = $2 + 1; $3 = 0; OFS = "."; print}' VERSION > VERSION.tmp && mv VERSION.tmp VERSION
+      - git add VERSION
+      - git commit -m "Prepare minor v{{.VERSION}} for release"
+
+  bump_major:
+    desc: Bump major version number
+    cmds:
+      - git branch --show-current | grep ^releases || { echo "Use releases branch to bump versions"; exit 1; }
+      - awk -F. '{$1 = $1 + 1; $2 = 0; $3 = 0; OFS = "."; print}' VERSION > VERSION.tmp && mv VERSION.tmp VERSION
+      - git add VERSION
+      - git commit -m "Prepare major v{{.VERSION}} for release"
+
+  tag:
+    desc: Tag repo and push to origin
+    cmds:
+      - git branch --show-current | grep ^releases || { echo "Use releases branch to tag versions"; exit 1; }
+      - git diff --cached --quiet --exit-code
+      - git add VERSION
+      - git push origin v{{.VERSION}}
